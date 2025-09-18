@@ -82,20 +82,22 @@ const DrawingOCRApp = () => {
   }
 }, [selectedText, showCorrectionInput]);
 
+// Replace your mobile detection useEffect with these two:
 useEffect(() => {
   const checkIfMobile = () => {
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
     const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
     setIsMobile(mobileRegex.test(userAgent.toLowerCase()));
-    
-    // Auto-adjust brush size for mobile
-    if (mobileRegex.test(userAgent.toLowerCase()) && brushSize < 5) {
-      setBrushSize(6); // Larger default for finger drawing
-    }
   };
   
   checkIfMobile();
 }, []);
+
+useEffect(() => {
+  if (isMobile && brushSize === 3) {
+    setBrushSize(6);
+  }
+}, [isMobile, brushSize]);
 
   // Touch event handlers for mobile
   const handleTouchStart = (e) => {
