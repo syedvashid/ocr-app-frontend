@@ -3,7 +3,7 @@ import { Pen, Eraser, Download, Camera, Trash2, Loader, AlertCircle, CheckCircle
 import './App.css';
 
 // Backend API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ocr-app-backend-dnegbva9b7g5h6d4.centralindia-01.azurewebsites.net';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // API functions
 const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
@@ -65,6 +65,7 @@ const DrawingOCRApp = () => {
   const [currentImageHash, setCurrentImageHash] = useState('');
   // Add this with your other useState declarations
   const [textWasUpdated, setTextWasUpdated] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -81,58 +82,103 @@ const DrawingOCRApp = () => {
   }
 }, [selectedText, showCorrectionInput]);
 
+useEffect(() => {
+  const checkIfMobile = () => {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+    setIsMobile(mobileRegex.test(userAgent.toLowerCase()));
+    
+    // Auto-adjust brush size for mobile
+    if (mobileRegex.test(userAgent.toLowerCase()) && brushSize < 5) {
+      setBrushSize(6); // Larger default for finger drawing
+    }
+  };
+  
+  checkIfMobile();
+}, []);
+
   // Touch event handlers for mobile
   const handleTouchStart = (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    setIsDrawing(true);
-    setCurrentPath([{ x, y }]);
-  };
+  e.preventDefault();
+  e.stopPropagation();
+  
+  const touch = e.touches[0];
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  
+  // Better coordinate calculation considering canvas scaling
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const x = (touch.clientX - rect.left) * scaleX;
+  const y = (touch.clientY - rect.top) * scaleY;
+  
+  setIsDrawing(true);
+  setCurrentPath([{ x, y }]);
+};
 
-  const handleTouchMove = (e) => {
-    e.preventDefault();
-    if (!isDrawing) return;
-    const touch = e.touches[0];
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    setCurrentPath(prev => [...prev, { x, y }]);
-  };
+const handleTouchMove = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  if (!isDrawing) return;
+  
+  const touch = e.touches[0];
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  
+  // Better coordinate calculation considering canvas scaling
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const x = (touch.clientX - rect.left) * scaleX;
+  const y = (touch.clientY - rect.top) * scaleY;
+  
+  setCurrentPath(prev => [...prev, { x, y }]);
+};
 
-  const handleTouchEnd = (e) => {
-    e.preventDefault();
-    if (isDrawing && currentPath.length > 0) {
-      setPaths(prev => [...prev, currentPath]);
-      setCurrentPath([]);
-    }
-    setIsDrawing(false);
-  };
+const handleTouchEnd = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  if (isDrawing && currentPath.length > 0) {
+    setPaths(prev => [...prev, currentPath]);
+    setCurrentPath([]);
+  }
+  setIsDrawing(false);
+};
 
   // Drawing functions
   const startDrawing = (e) => {
-    setIsDrawing(true);
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setCurrentPath([{ x, y }]);
-  };
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  
+  // Better coordinate calculation
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  
+  setIsDrawing(true);
+  setCurrentPath([{ x, y }]);
+};
 
-  const draw = (e) => {
-    if (!isDrawing) return;
-    
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setCurrentPath(prev => [...prev, { x, y }]);
-  };
+const draw = (e) => {
+  if (!isDrawing) return;
+  
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  
+  // Better coordinate calculation
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  
+  setCurrentPath(prev => [...prev, { x, y }]);
+};
 
   const stopDrawing = () => {
     if (isDrawing && currentPath.length > 0) {
@@ -177,7 +223,7 @@ const DrawingOCRApp = () => {
         ctx.stroke();
       }
     });
-  }, [paths, currentPath, brushSize]);
+  }, [paths, currentPath, brushSize, isMobile]);
 
   // OCR Processing
   const processOCR = async () => {
@@ -369,13 +415,13 @@ const DrawingOCRApp = () => {
                 <label>Brush Size:</label>
                 <input
                   type="range"
-                  min="1"
-                  max="10"
+                      min={isMobile ? 3 : 1}
+                      max={isMobile ? 15 : 10}
                   value={brushSize}
                   onChange={(e) => setBrushSize(Number(e.target.value))}
                   className="brush-slider"
                 />
-                <span>{brushSize}px</span>
+                <span>{brushSize}px {isMobile && '(Mobile Optimized)'}</span>
               </div>
             </div>
 
@@ -386,6 +432,13 @@ const DrawingOCRApp = () => {
                 width={1000}
                 height={600}
                 className="drawing-canvas"
+                style={{
+                  touchAction: 'none',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  WebkitTouchCallout: 'none',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
@@ -393,6 +446,8 @@ const DrawingOCRApp = () => {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+                onContextMenu={(e) => e.preventDefault()}
               />
             </div>
 
