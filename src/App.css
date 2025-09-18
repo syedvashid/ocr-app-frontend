@@ -948,7 +948,7 @@ code {
   -o-user-drag: none;
 }
 /* Canvas container mobile optimizations */
-.canvas-container {
+.canvas-container {  
   touch-action: none;
 }
 

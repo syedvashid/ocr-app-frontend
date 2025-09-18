@@ -451,7 +451,7 @@ const draw = (e) => {
               />
             </div>
 
-            {/* Drawing Controls */}
+            {/* Drawing Controls */} 
             <div className="controls-panel">
               <button
                 onClick={undoLastStroke}
