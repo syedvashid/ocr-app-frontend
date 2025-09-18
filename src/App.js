@@ -3,7 +3,7 @@ import { Pen, Eraser, Download, Camera, Trash2, Loader, AlertCircle, CheckCircle
 import './App.css';
 
 // Backend API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ocr-app-backend-dnegbva9b7g5h6d4.centralindia-01.azurewebsites.net';
 
 // API functions
 const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
