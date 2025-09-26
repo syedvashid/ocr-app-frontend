@@ -3,7 +3,8 @@ import { Pen, Eraser, Download, Camera, Trash2, Loader, AlertCircle, CheckCircle
 import './App.css';
 
 // Backend API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ocr-app-backend-dnegbva9b7g5h6d4.centralindia-01.azurewebsites.net';
+// 'https://ocr-app-backend-dnegbva9b7g5h6d4.centralindia-01.azurewebsites.net'  put this in line 7 link
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // API functions
 const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
@@ -66,6 +67,9 @@ const DrawingOCRApp = () => {
   // Add this with your other useState declarations
   const [textWasUpdated, setTextWasUpdated] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // for pen and eraser tool
+  const [tool, setTool] = useState('pen'); // 'pen' or 'eraser'
+  const [eraserSize, setEraserSize] = useState(10);
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -116,7 +120,7 @@ useEffect(() => {
   const y = (touch.clientY - rect.top) * scaleY;
   
   setIsDrawing(true);
-  setCurrentPath([{ x, y }]);
+  setCurrentPath([{ x, y, tool, size: tool === 'pen' ? brushSize : eraserSize }]);
 };
 
 const handleTouchMove = (e) => {
@@ -136,7 +140,7 @@ const handleTouchMove = (e) => {
   const x = (touch.clientX - rect.left) * scaleX;
   const y = (touch.clientY - rect.top) * scaleY;
   
-  setCurrentPath(prev => [...prev, { x, y }]);
+  setCurrentPath(prev => [...prev, { x, y, tool, size: tool === 'pen' ? brushSize : eraserSize }]);
 };
 
 const handleTouchEnd = (e) => {
@@ -163,7 +167,7 @@ const handleTouchEnd = (e) => {
   const y = (e.clientY - rect.top) * scaleY;
   
   setIsDrawing(true);
-  setCurrentPath([{ x, y }]);
+  setCurrentPath([{ x, y, tool, size: tool === 'pen' ? brushSize : eraserSize }]);
 };
 
 const draw = (e) => {
@@ -179,7 +183,7 @@ const draw = (e) => {
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
   
-  setCurrentPath(prev => [...prev, { x, y }]);
+  setCurrentPath(prev => [...prev, { x, y, tool, size: tool === 'pen' ? brushSize : eraserSize }]);
 };
 
   const stopDrawing = () => {
@@ -190,42 +194,71 @@ const draw = (e) => {
     setIsDrawing(false);
   };
 
-  const clearCanvas = () => {
-    setPaths([]);
-    setCurrentPath([]);
-    setOcrResults(null);
-    setSelectedText('');
-    setError('');
-  };
+const clearCanvas = () => {
+  setPaths([]);
+  setCurrentPath([]);
+  setOcrResults(null);
+  setSelectedText('');
+  setError('');
+  
+  // Also clear the canvas visually
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+};
 
   const undoLastStroke = () => {
     setPaths(prev => prev.slice(0, -1));
   };
 
+  // Tool switching functions
+const switchToPen = () => {
+  setTool('pen');
+};
+
+const switchToEraser = () => {
+  setTool('eraser');
+};
+
   // Canvas drawing effect
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Set drawing style
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = brushSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    // Draw all paths
-    [...paths, currentPath].forEach(path => {
-      if (path.length > 1) {
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        path.forEach(point => ctx.lineTo(point.x, point.y));
-        ctx.stroke();
+useEffect(() => {
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  
+  // Clear canvas with white background
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw all paths
+  [...paths, currentPath].forEach(path => {
+    if (path.length > 1) {
+      const pathTool = path[0]?.tool || 'pen';
+      const pathSize = path[0]?.size || brushSize;
+      
+      ctx.beginPath();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = pathSize;
+      
+      if (pathTool === 'eraser') {
+        // Eraser mode - use destination-out composite operation
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        // Pen mode - normal drawing
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = '#000';
       }
-    });
-  }, [paths, currentPath, brushSize, isMobile]);
+      
+      ctx.moveTo(path[0].x, path[0].y);
+      path.forEach(point => ctx.lineTo(point.x, point.y));
+      ctx.stroke();
+    }
+  });
+  
+  // Reset to normal composite operation
+  ctx.globalCompositeOperation = 'source-over';
+}, [paths, currentPath, brushSize, eraserSize, tool, isMobile]);
 
   // OCR Processing
   const processOCR = async () => {
@@ -413,17 +446,53 @@ const draw = (e) => {
           <div className="drawing-section glass-effect">
             <div className="section-header">
               <h2 className="section-title">Drawing Pad</h2>
-              <div className="brush-controls">
-                <label>Brush Size:</label>
-                <input
-                  type="range"
-                      min={isMobile ? 3 : 1}
-                      max={isMobile ? 15 : 10}
-                  value={brushSize}
-                  onChange={(e) => setBrushSize(Number(e.target.value))}
-                  className="brush-slider"
-                />
-                <span>{brushSize}px {isMobile && '(Mobile Optimized)'}</span>
+              
+              {/* Tool Selection */}
+              <div className="tool-controls">
+                <div className="tool-buttons">
+                  <button
+                    onClick={switchToPen}
+                    className={`tool-button ${tool === 'pen' ? 'active-tool' : ''}`}
+                    title="Pen Tool"
+                  >
+                    <Pen size={16} />
+                    Pen
+                  </button>
+                  <button
+                    onClick={switchToEraser}
+                    className={`tool-button ${tool === 'eraser' ? 'active-tool' : ''}`}
+                    title="Eraser Tool"
+                  >
+                    <Eraser size={16} />
+                    Eraser
+                  </button>
+                </div>
+                
+                {/* Dynamic Size Control */}
+                <div className="size-controls">
+                  <label>
+                    {tool === 'pen' ? 'Brush' : 'Eraser'} Size:
+                  </label>
+                  <input
+                    type="range"
+                    min={tool === 'pen' ? (isMobile ? 3 : 1) : 5}
+                    max={tool === 'pen' ? (isMobile ? 15 : 10) : 30}
+                    value={tool === 'pen' ? brushSize : eraserSize}
+                    onChange={(e) => {
+                      const size = Number(e.target.value);
+                      if (tool === 'pen') {
+                        setBrushSize(size);
+                      } else {
+                        setEraserSize(size);
+                      }
+                    }}
+                    className="size-slider"
+                  />
+                  <span>
+                    {tool === 'pen' ? brushSize : eraserSize}px 
+                    {isMobile && tool === 'pen' && ' (Mobile Optimized)'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -433,7 +502,7 @@ const draw = (e) => {
                 ref={canvasRef}
                 width={1000}
                 height={600}
-                className="drawing-canvas"
+                className={`drawing-canvas ${tool === 'eraser' ? 'eraser-cursor' : 'pen-cursor'}`}
                 style={{
                   touchAction: 'none',
                   userSelect: 'none',
@@ -452,6 +521,14 @@ const draw = (e) => {
                 onContextMenu={(e) => e.preventDefault()}
               />
             </div>
+            {/* Tool indicator for mobile */}
+              {isMobile && (
+                <div className="mobile-tool-indicator">
+                  <span className={`tool-indicator ${tool}`}>
+                    {tool === 'pen' ? '✏️ Drawing Mode' : '🧹 Eraser Mode'}
+                  </span>
+                </div>
+              )}
 
             {/* Drawing Controls */} 
             <div className="controls-panel">
