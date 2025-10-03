@@ -1245,3 +1245,20 @@ code {
 }
 
 
+.pdf-indicator {
+  padding: 3rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.pdf-indicator p {
+  font-size: 2rem;
+  margin: 0.5rem 0;
+}
+
+.pdf-filename {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+}

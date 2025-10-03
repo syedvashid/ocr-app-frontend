@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Pen, Eraser, Download, Camera, Trash2, Loader, AlertCircle, CheckCircle, Copy } from 'lucide-react';
 import './App.css';
@@ -7,8 +8,10 @@ import './App.css';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // API functions
-const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
+const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous', fileType = 'image') => {
   try {
+    console.log('Sending request with fileType:', fileType); // Debug log
+    
     const response = await fetch(`${API_BASE_URL}/process-ocr`, {
       method: 'POST',
       headers: {
@@ -16,7 +19,8 @@ const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
       },
       body: JSON.stringify({
         image: imageDataUrl,
-        user_id: userId
+        user_id: userId,
+        file_type: fileType
       })
     });
 
@@ -25,6 +29,7 @@ const processOCRWithBackend = async (imageDataUrl, userId = 'anonymous') => {
     }
 
     const result = await response.json();
+    console.log('Backend response:', result); // Debug log
     
     if (!result.success) {
       throw new Error(result.error || 'OCR processing failed');
@@ -70,6 +75,11 @@ const DrawingOCRApp = () => {
   // for pen and eraser tool
   const [tool, setTool] = useState('pen'); // 'pen' or 'eraser'
   const [eraserSize, setEraserSize] = useState(10);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [processingMode, setProcessingMode] = useState('drawing'); // 'drawing' or 'upload'
+  const [previewImage, setPreviewImage] = useState(null);
+
+  const [fileType, setFileType] = useState('image'); // 'image' or 'pdf'
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -221,6 +231,42 @@ const switchToEraser = () => {
   setTool('eraser');
 };
 
+
+const handleImageUpload = (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    // Check file type
+    const isPDF = file.type === 'application/pdf';
+    const isImage = file.type.startsWith('image/');
+    
+    if (!isPDF && !isImage) {
+      setError('Please select a valid image or PDF file');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedImage(e.target.result);
+      setPreviewImage(isPDF ? null : e.target.result); // No preview for PDFs
+      setFileType(isPDF ? 'pdf' : 'image');
+      setProcessingMode('upload');
+      setOcrResults(null);
+      setSelectedText('');
+      setError('');
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
+const clearUploadedImage = () => {
+  setUploadedImage(null);
+  setPreviewImage(null);
+  setProcessingMode('drawing');
+  setOcrResults(null);
+  setSelectedText('');
+  setError('');
+};
+
   // Canvas drawing effect
 useEffect(() => {
   const canvas = canvasRef.current;
@@ -261,48 +307,69 @@ useEffect(() => {
 }, [paths, currentPath, brushSize, eraserSize, tool, isMobile]);
 
   // OCR Processing
-  const processOCR = async () => {
-    if (paths.length === 0) {
-      setError("Please draw something first!");
-      return;
-    }
+const processOCR = async () => {
+  // Validation based on mode
+  if (processingMode === 'drawing' && paths.length === 0) {
+    setError("Please draw something first!");
+    return;
+  }
+  
+  if (processingMode === 'upload' && !uploadedImage) {
+    setError("Please upload an image first!");
+    return;
+  }
 
-    if (backendStatus !== 'connected') {
-      setError("Backend server is not connected. Please make sure the Flask server is running.");
-      return;
-    }
+  if (backendStatus !== 'connected') {
+    setError("Backend server is not connected. Please make sure the Flask server is running.");
+    return;
+  }
 
-    setIsProcessing(true);
-    setError('');
-    setOcrResults(null);
-    setSelectedText('');
-    setCorrectionText(''); // Add this line
+  setIsProcessing(true);
+  setError('');
+  setOcrResults(null);
+  setSelectedText('');
+  setCorrectionText('');
+  
+  try {
+    let imageDataUrl;
     
-    try {
+    if (processingMode === 'drawing') {
       const canvas = canvasRef.current;
-      const imageDataUrl = canvas.toDataURL('image/png');
-      
-      const result = await processOCRWithBackend(imageDataUrl, userId || 'anonymous');
-      console.log('OCR API Result:', result);
-      setOcrResults(result);
-      setCurrentImageHash(result.image_hash || ''); // Add this line
-      
-      const originalText = result.original_text || result.text;
-      if (originalText && originalText.trim()) {
-        setSelectedText(originalText);
-      } else {
-        if (result.refined_data?.suggestions?.length > 0) {
-          setSelectedText(result.refined_data.suggestions[0]);
-        }
-      }
-      
-    } catch (error) {
-      console.error("OCR processing failed:", error);
-      setError(error.message || "Processing failed. Please try again.");
-    } finally {
-      setIsProcessing(false);
+      imageDataUrl = canvas.toDataURL('image/png');
+    } else {
+      imageDataUrl = uploadedImage;
     }
-  };
+    
+    console.log('Processing with file type:', fileType); // Debug log
+    
+    const result = await processOCRWithBackend(
+      imageDataUrl, 
+      userId || 'anonymous',
+      fileType
+    );
+    
+    console.log('Received OCR result:', result); // Debug log
+    
+    setOcrResults(result);
+    setCurrentImageHash(result.image_hash || '');
+    
+    // Set the original text as selected by default
+    const originalText = result.original_text || result.text || '';
+    if (originalText.trim()) {
+      setSelectedText(originalText);
+    } else if (result.refined_data?.suggestions?.length > 0) {
+      setSelectedText(result.refined_data.suggestions[0]);
+    }
+    
+    console.log('Selected text set to:', originalText); // Debug log
+    
+  } catch (error) {
+    console.error("OCR processing failed:", error);
+    setError(error.message || "Processing failed. Please try again.");
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   const selectText = (text) => {
     setSelectedText(text);
@@ -433,6 +500,31 @@ useEffect(() => {
             </p>
           </div>
         </div>
+        {/* Mode Selection */}
+        <div className="mode-section glass-effect">
+          <div className="section-header">
+            <h3 className="section-title">Processing Mode</h3>
+          </div>
+          <div className="mode-controls">
+            <button
+              onClick={() => {
+                setProcessingMode('drawing');
+                clearUploadedImage();
+              }}
+              className={`mode-button ${processingMode === 'drawing' ? 'active' : ''}`}
+            >
+              <Pen size={16} />
+              Draw Text
+            </button>
+            <button
+              onClick={() => setProcessingMode('upload')}
+              className={`mode-button ${processingMode === 'upload' ? 'active' : ''}`}
+            >
+              <Camera size={16} />
+              Upload Image
+            </button>
+          </div>
+        </div>
         {/* Copied Alert */}
         {showCopiedAlert && (
           <div className="alert-popup">
@@ -442,8 +534,68 @@ useEffect(() => {
         )}
 
         <div className="main-content">
+        {/* Image Upload Section */}
+          {processingMode === 'upload' && (
+            <div className="upload-section glass-effect">
+              <div className="section-header">
+                <h2 className="section-title">Image Upload</h2>
+              </div>
+              
+              <div className="upload-container">
+                {!uploadedImage ? (
+                  <div className="upload-zone">
+                    <input
+                        type="file"
+                        id="imageUpload"
+                        accept="image/*,application/pdf"  // NEW: accept PDFs
+                        onChange={handleImageUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <label htmlFor="imageUpload" className="upload-label">
+                        <Camera size={48} />
+                        <p>Click to upload an image or PDF</p>
+                        <span>Supports: JPG, PNG, GIF, WebP, PDF</span>  {/* Updated text */}
+                      </label>
+                  </div>
+                ) : (
+                  <div className="image-preview-container">
+                     {fileType === 'pdf' ? (
+                    <div className="pdf-indicator">
+                      <p>📄 PDF File Selected</p>
+                      <p className="pdf-filename">Ready to process</p>
+                    </div>
+                  ) : (
+                    <img
+                      src={previewImage}
+                      alt="Uploaded preview"
+                      className="uploaded-image-preview"
+                    />
+                  )}
+                    <div className="upload-controls">
+                      <button
+                        onClick={clearUploadedImage}
+                        className="glow-button btn-danger"
+                      >
+                        <Trash2 size={16} />
+                        Remove Image
+                      </button>
+                      <button
+                        onClick={processOCR}
+                        disabled={isProcessing || backendStatus !== 'connected'}
+                        className={`glow-button btn-success ${isProcessing ? 'processing-pulse' : ''}`}
+                      >
+                        {isProcessing ? <Loader className="animate-spin" size={16} /> : <Camera size={16} />}
+                        {isProcessing ? 'Processing...' : 'Extract Text'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* Drawing Pad */}
-          <div className="drawing-section glass-effect">
+          {processingMode === 'drawing' && (
+            <div className="drawing-section glass-effect">
             <div className="section-header">
               <h2 className="section-title">Drawing Pad</h2>
               
@@ -568,6 +720,7 @@ useEffect(() => {
               </button>
             </div>
           </div>
+          )}
 
           {/* Results Panel */}
           <div className="results-section glass-effect">
